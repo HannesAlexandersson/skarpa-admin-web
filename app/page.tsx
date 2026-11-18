@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { apiFetch, formatKr, PAYMENT_STATUSES } from "@/lib/api";
+import PricingPanel from "@/components/PricingPanel";
+import HoursPanel from "@/components/HoursPanel";
 
 interface PickupBooking {
   id: string;
@@ -12,6 +15,11 @@ interface PickupBooking {
   customerName: string;
   customerPhone: string;
   customerEmail?: string;
+  knifeCount: number;
+  paymentId?: string | null;
+  paymentMethod?: string | null;
+  paymentStatus?: string | null;
+  amountOre?: number | null;
 }
 
 interface Customer {
@@ -40,7 +48,7 @@ export default function AdminPage() {
   const [authError, setAuthError] = useState("");
   const [signingIn, setSigningIn] = useState(false);
 
-  const [tab, setTab] = useState<"bookings" | "customers">("bookings");
+  const [tab, setTab] = useState<"bookings" | "customers" | "pricing" | "hours">("bookings");
   const [date, setDate] = useState<string>("");
   const [bookings, setBookings] = useState<PickupBooking[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -81,6 +89,7 @@ export default function AdminPage() {
 
   const loadData = useCallback(async () => {
     if (!session) return;
+    if (tab === "pricing" || tab === "hours") return;
     if (tab === "bookings" && !date) return;
     setLoading(true);
     setError("");
@@ -114,6 +123,36 @@ export default function AdminPage() {
     setSigningIn(false);
     if (signInError) setAuthError(signInError.message);
   }
+
+  async function setPaymentStatus(paymentId: string, status: string) {
+    if (!session) return;
+    setError("");
+    try {
+      await apiFetch(session.access_token, `/api/payments/${paymentId}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      setBookings((all) => all.map((b) => (b.paymentId === paymentId ? { ...b, paymentStatus: status } : b)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update payment");
+    }
+  }
+
+  const statusSelect = (b: PickupBooking) =>
+    b.paymentId ? (
+      <select
+        aria-label="Payment status"
+        value={b.paymentStatus ?? "pending"}
+        onChange={(e) => setPaymentStatus(b.paymentId!, e.target.value)}
+        className="px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-700 text-xs"
+      >
+        {PAYMENT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+      </select>
+    ) : <span className="text-zinc-500 text-xs">No payment</span>;
+
+  const TABS = [
+    { id: "bookings", label: "Pickups" },
+    { id: "customers", label: "Customers" },
+    { id: "pricing", label: "Prices" },
+    { id: "hours", label: "Hours" },
+  ] as const;
 
   if (!authReady) return null;
 
@@ -173,20 +212,15 @@ export default function AdminPage() {
           <div className="flex items-center gap-6">
             <h1 className="text-lg sm:text-xl font-bold tracking-tight">Skärpa Admin</h1>
             <nav className="hidden sm:flex gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
-              <button
-                onClick={() => setTab("bookings")}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${tab === "bookings" ? "bg-amber-500 text-zinc-950" : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-              >
-                Pickups
-              </button>
-              <button
-                onClick={() => setTab("customers")}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${tab === "customers" ? "bg-amber-500 text-zinc-950" : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-              >
-                Customers
-              </button>
+              {TABS.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${tab === t.id ? "bg-amber-500 text-zinc-950" : "text-zinc-400 hover:text-zinc-200"}`}
+                >
+                  {t.label}
+                </button>
+              ))}
             </nav>
           </div>
 
@@ -209,21 +243,16 @@ export default function AdminPage() {
 
         {/* Mobile Tab Bar */}
         <div className="sm:hidden px-4 pb-3">
-          <div className="grid grid-cols-2 gap-2 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
-            <button
-              onClick={() => setTab("bookings")}
-              className={`py-2 rounded-lg text-sm font-medium ${tab === "bookings" ? "bg-amber-500 text-zinc-950" : "text-zinc-400"
-                }`}
-            >
-              Pickups
-            </button>
-            <button
-              onClick={() => setTab("customers")}
-              className={`py-2 rounded-lg text-sm font-medium ${tab === "customers" ? "bg-amber-500 text-zinc-950" : "text-zinc-400"
-                }`}
-            >
-              Customers
-            </button>
+          <div className="grid grid-cols-4 gap-1 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`py-2 rounded-lg text-sm font-medium ${tab === t.id ? "bg-amber-500 text-zinc-950" : "text-zinc-400"}`}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
         </div>
       </header>
@@ -235,7 +264,11 @@ export default function AdminPage() {
           </div>
         )}
 
-        {tab === "bookings" ? (
+        {tab === "pricing" ? (
+          <PricingPanel token={session.access_token} />
+        ) : tab === "hours" ? (
+          <HoursPanel token={session.access_token} />
+        ) : tab === "bookings" ? (
           <section className="space-y-4">
             {/* Controls & Summary */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-zinc-900 p-4 rounded-2xl border border-zinc-800">
@@ -308,6 +341,12 @@ export default function AdminPage() {
                           </a>
                         )}
                       </div>
+                      <div className="flex flex-wrap items-center gap-3 pt-1 text-sm text-zinc-300">
+                        <span>{b.knifeCount} {b.knifeCount === 1 ? "knife" : "knives"}</span>
+                        <span>{formatKr(b.amountOre)}</span>
+                        <span className="text-zinc-400">{b.paymentMethod ?? "—"}</span>
+                        {statusSelect(b)}
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -322,6 +361,9 @@ export default function AdminPage() {
                         <th className="py-3.5 px-5">Pickup Address</th>
                         <th className="py-3.5 px-5">Phone</th>
                         <th className="py-3.5 px-5">Email</th>
+                        <th className="py-3.5 px-5">Knives</th>
+                        <th className="py-3.5 px-5">Price</th>
+                        <th className="py-3.5 px-5">Payment</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800 text-sm">
@@ -347,6 +389,12 @@ export default function AdminPage() {
                             </a>
                           </td>
                           <td className="py-4 px-5 text-zinc-400">{b.customerEmail ?? "—"}</td>
+                          <td className="py-4 px-5">{b.knifeCount}</td>
+                          <td className="py-4 px-5 whitespace-nowrap">{formatKr(b.amountOre)}</td>
+                          <td className="py-4 px-5 space-y-1">
+                            <div className="text-zinc-400 text-xs">{b.paymentMethod ?? "—"}</div>
+                            {statusSelect(b)}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
