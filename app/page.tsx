@@ -20,6 +20,9 @@ interface PickupBooking {
   paymentMethod?: string | null;
   paymentStatus?: string | null;
   amountOre?: number | null;
+  withdrawalConsentAt?: string | null;
+  withdrawalConsentText?: string | null;
+  withdrawalConsentVersion?: string | null;
 }
 
 interface Customer {
@@ -29,6 +32,19 @@ interface Customer {
   phone: string;
   email?: string;
   createdAt: string;
+}
+
+function ConsentDetails({ booking }: { booking: PickupBooking }) {
+  if (!booking.withdrawalConsentAt) return <span className="text-zinc-500 text-xs">Not recorded</span>;
+  return (
+    <details className="max-w-64 text-xs">
+      <summary className="cursor-pointer text-emerald-400">Accepted {new Date(booking.withdrawalConsentAt).toLocaleString("sv-SE")}</summary>
+      <div className="mt-2 space-y-2 text-zinc-400">
+        <p>Version: {booking.withdrawalConsentVersion ?? "—"}</p>
+        <p className="whitespace-normal">{booking.withdrawalConsentText ?? "—"}</p>
+      </div>
+    </details>
+  );
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL!;
@@ -347,6 +363,7 @@ export default function AdminPage() {
                         <span className="text-zinc-400">{b.paymentMethod ?? "—"}</span>
                         {statusSelect(b)}
                       </div>
+                      <ConsentDetails booking={b} />
                     </li>
                   ))}
                 </ul>
@@ -364,6 +381,7 @@ export default function AdminPage() {
                         <th className="py-3.5 px-5">Knives</th>
                         <th className="py-3.5 px-5">Price</th>
                         <th className="py-3.5 px-5">Payment</th>
+                        <th className="py-3.5 px-5">Withdrawal consent</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800 text-sm">
@@ -395,6 +413,7 @@ export default function AdminPage() {
                             <div className="text-zinc-400 text-xs">{b.paymentMethod ?? "—"}</div>
                             {statusSelect(b)}
                           </td>
+                          <td className="py-4 px-5"><ConsentDetails booking={b} /></td>
                         </tr>
                       ))}
                     </tbody>
