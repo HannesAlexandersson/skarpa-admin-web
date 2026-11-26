@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Skarpa Kknivsliperi",
+  title: "Skarpa Knivsliperi",
   description: "Ge nytt liv åt dina knivar",
 };
 

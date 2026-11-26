@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
@@ -85,7 +85,7 @@ async function compressImage(file: File, maxDimension = 1600, quality = 0.82): P
     });
 }
 
-export default function BookingDetailPage() {
+function BookingDetailContent() {
     const { id } = useParams<{ id: string }>();
     const router = useRouter();
 
@@ -475,5 +475,19 @@ export default function BookingDetailPage() {
                 </div>
             )}
         </div>
+    );
+}
+
+export default function BookingDetailPage() {
+    return (
+        <Suspense
+            fallback={
+                <div className="min-h-screen bg-zinc-950 text-zinc-400 flex items-center justify-center text-sm">
+                    Loading booking...
+                </div>
+            }
+        >
+            <BookingDetailContent />
+        </Suspense>
     );
 }
