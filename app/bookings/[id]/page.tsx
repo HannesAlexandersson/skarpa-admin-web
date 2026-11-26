@@ -32,6 +32,8 @@ interface BookingDetail {
     withdrawalConsentText?: string | null;
     withdrawalConsentVersion?: string | null;
     photos: BookingPhoto[];
+    confirmationSentAt: string | null;
+    receiptSentAt: string | null;
 }
 
 async function compressImage(file: File, maxDimension = 1600, quality = 0.82): Promise<Blob> {
@@ -103,6 +105,9 @@ function BookingDetailContent() {
 
     const cameraInputRef = useRef<HTMLInputElement>(null);
     const galleryInputRef = useRef<HTMLInputElement>(null);
+
+    const [sendingEmail, setSendingEmail] = useState<'confirmation' | 'receipt' | null>(null);
+    const [emailFeedback, setEmailFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
     useEffect(() => {
         supabase.auth.getSession().then(({ data }) => {
@@ -199,6 +204,59 @@ function BookingDetailContent() {
             setError(err instanceof Error ? err.message : "Failed to delete photo");
         } finally {
             setDeletingId(null);
+        }
+    }
+
+    async function handleSendEmail(kind: 'confirmation' | 'receipt') {
+        if (!booking) return;
+        setSendingEmail(kind);
+        setEmailFeedback(null);
+
+        try {
+            const {
+                data: { session },
+            } = await supabase.auth.getSession();
+
+            if (!session?.access_token) {
+                throw new Error('Ingen aktiv inloggningssession hittades.');
+            }
+
+            const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+            const endpoint = kind === 'confirmation' ? 'send-confirmation' : 'send-receipt';
+
+            const res = await fetch(`${apiBaseUrl}/api/bookings/${booking.id}/${endpoint}`, {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${session.access_token}`,
+                },
+            });
+
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.error || 'Kunde inte skicka e-post.');
+            }
+
+            setBooking((prev) =>
+                prev
+                    ? {
+                        ...prev,
+                        confirmationSentAt: kind === 'confirmation' ? data.sentAt : prev.confirmationSentAt,
+                        receiptSentAt: kind === 'receipt' ? data.sentAt : prev.receiptSentAt,
+                    }
+                    : prev
+            );
+
+            setEmailFeedback({
+                type: 'success',
+                text: kind === 'confirmation' ? 'Bokningsbekräftelse skickad!' : 'Kvitto skickat!',
+            });
+        } catch (err: unknown) {
+            setEmailFeedback({
+                type: 'error',
+                text: err instanceof Error ? err.message : 'Ett fel uppstod vid utskick.',
+            });
+        } finally {
+            setSendingEmail(null);
         }
     }
 
@@ -381,7 +439,68 @@ function BookingDetailContent() {
                                 </button>
                             </div>
                         </section>
+                        {/* Buttons for sending confirmation and receipts */}
+                        <section className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm space-y-3">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-sm font-semibold text-zinc-900">E-post till kund</h2>
+                                <span className="text-xs text-zinc-500">
+                                    {booking.customerEmail || 'Ingen e-post angiven'}
+                                </span>
+                            </div>
 
+                            {emailFeedback && (
+                                <div
+                                    className={`rounded-lg px-3 py-2 text-xs font-medium ${emailFeedback.type === 'success'
+                                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                        : 'bg-red-50 text-red-800 border border-red-200'
+                                        }`}
+                                >
+                                    {emailFeedback.text}
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                <button
+                                    type="button"
+                                    disabled={!booking.customerEmail || sendingEmail !== null}
+                                    onClick={() => handleSendEmail('confirmation')}
+                                    className="flex flex-col items-center justify-center rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2.5 text-sm font-medium text-zinc-900 hover:bg-zinc-100 disabled:opacity-50"
+                                >
+                                    <span>
+                                        {sendingEmail === 'confirmation'
+                                            ? 'Skickar bekräftelse...'
+                                            : booking.confirmationSentAt
+                                                ? 'Skicka bekräftelse igen'
+                                                : 'Skicka bokningsbekräftelse'}
+                                    </span>
+                                    {booking.confirmationSentAt && (
+                                        <span className="text-[11px] font-normal text-emerald-700">
+                                            Skickad {new Date(booking.confirmationSentAt).toLocaleString('sv-SE')}
+                                        </span>
+                                    )}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    disabled={!booking.customerEmail || sendingEmail !== null}
+                                    onClick={() => handleSendEmail('receipt')}
+                                    className="flex flex-col items-center justify-center rounded-lg bg-zinc-900 px-3 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                                >
+                                    <span>
+                                        {sendingEmail === 'receipt'
+                                            ? 'Skickar kvitto...'
+                                            : booking.receiptSentAt
+                                                ? 'Skicka kvitto igen'
+                                                : 'Skicka kvitto'}
+                                    </span>
+                                    {booking.receiptSentAt && (
+                                        <span className="text-[11px] font-normal text-emerald-300">
+                                            Skickad {new Date(booking.receiptSentAt).toLocaleString('sv-SE')}
+                                        </span>
+                                    )}
+                                </button>
+                            </div>
+                        </section>
                         {/* Attached Photos Gallery */}
                         <section className="space-y-3">
                             <h3 className="text-base font-semibold">
