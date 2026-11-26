@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { apiFetch, formatKr, PAYMENT_STATUSES } from "@/lib/api";
@@ -20,9 +21,6 @@ interface PickupBooking {
   paymentMethod?: string | null;
   paymentStatus?: string | null;
   amountOre?: number | null;
-  withdrawalConsentAt?: string | null;
-  withdrawalConsentText?: string | null;
-  withdrawalConsentVersion?: string | null;
 }
 
 interface Customer {
@@ -32,19 +30,6 @@ interface Customer {
   phone: string;
   email?: string;
   createdAt: string;
-}
-
-function ConsentDetails({ booking }: { booking: PickupBooking }) {
-  if (!booking.withdrawalConsentAt) return <span className="text-zinc-500 text-xs">Not recorded</span>;
-  return (
-    <details className="max-w-64 text-xs">
-      <summary className="cursor-pointer text-emerald-400">Accepted {new Date(booking.withdrawalConsentAt).toLocaleString("sv-SE")}</summary>
-      <div className="mt-2 space-y-2 text-zinc-400">
-        <p>Version: {booking.withdrawalConsentVersion ?? "—"}</p>
-        <p className="whitespace-normal">{booking.withdrawalConsentText ?? "—"}</p>
-      </div>
-    </details>
-  );
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL!;
@@ -57,6 +42,7 @@ function shiftDate(isoDate: string, days: number): string {
 }
 
 export default function AdminPage() {
+  const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [email, setEmail] = useState("");
@@ -144,7 +130,10 @@ export default function AdminPage() {
     if (!session) return;
     setError("");
     try {
-      await apiFetch(session.access_token, `/api/payments/${paymentId}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      await apiFetch(session.access_token, `/api/payments/${paymentId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      });
       setBookings((all) => all.map((b) => (b.paymentId === paymentId ? { ...b, paymentStatus: status } : b)));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not update payment");
@@ -156,12 +145,22 @@ export default function AdminPage() {
       <select
         aria-label="Payment status"
         value={b.paymentStatus ?? "pending"}
-        onChange={(e) => setPaymentStatus(b.paymentId!, e.target.value)}
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => {
+          e.stopPropagation();
+          setPaymentStatus(b.paymentId!, e.target.value);
+        }}
         className="px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-700 text-xs"
       >
-        {PAYMENT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+        {PAYMENT_STATUSES.map((s) => (
+          <option key={s} value={s}>
+            {s}
+          </option>
+        ))}
       </select>
-    ) : <span className="text-zinc-500 text-xs">No payment</span>;
+    ) : (
+      <span className="text-zinc-500 text-xs">No payment</span>
+    );
 
   const TABS = [
     { id: "bookings", label: "Pickups" },
@@ -232,7 +231,8 @@ export default function AdminPage() {
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${tab === t.id ? "bg-amber-500 text-zinc-950" : "text-zinc-400 hover:text-zinc-200"}`}
+                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${tab === t.id ? "bg-amber-500 text-zinc-950" : "text-zinc-400 hover:text-zinc-200"
+                    }`}
                 >
                   {t.label}
                 </button>
@@ -264,7 +264,8 @@ export default function AdminPage() {
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`py-2 rounded-lg text-sm font-medium ${tab === t.id ? "bg-amber-500 text-zinc-950" : "text-zinc-400"}`}
+                className={`py-2 rounded-lg text-sm font-medium ${tab === t.id ? "bg-amber-500 text-zinc-950" : "text-zinc-400"
+                  }`}
               >
                 {t.label}
               </button>
@@ -334,7 +335,11 @@ export default function AdminPage() {
                 {/* Mobile Card List */}
                 <ul className="md:hidden space-y-3">
                   {bookings.map((b) => (
-                    <li key={b.id} className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800 space-y-2.5">
+                    <li
+                      key={b.id}
+                      onClick={() => router.push(`/bookings/${b.id}`)}
+                      className="p-4 rounded-2xl bg-zinc-900 border border-zinc-800 active:border-amber-500/60 cursor-pointer space-y-2.5 transition"
+                    >
                       <div className="flex items-center justify-between">
                         <span className="text-lg font-bold text-amber-400">{b.pickupTime.slice(0, 5)}</span>
                         <span className="font-semibold">{b.customerName}</span>
@@ -343,27 +348,41 @@ export default function AdminPage() {
                         href={`https://maps.google.com/?q=${encodeURIComponent(b.pickupAddress)}`}
                         target="_blank"
                         rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
                         className="block text-sm text-zinc-300 underline"
                       >
                         {b.pickupAddress}
                       </a>
                       <div className="flex gap-4 pt-1">
-                        <a href={`tel:${b.customerPhone}`} className="text-sm text-amber-400 font-medium">
+                        <a
+                          href={`tel:${b.customerPhone}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-sm text-amber-400 font-medium"
+                        >
                           {b.customerPhone}
                         </a>
                         {b.customerEmail && (
-                          <a href={`mailto:${b.customerEmail}`} className="text-sm text-zinc-400">
+                          <a
+                            href={`mailto:${b.customerEmail}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-sm text-zinc-400"
+                          >
                             {b.customerEmail}
                           </a>
                         )}
                       </div>
                       <div className="flex flex-wrap items-center gap-3 pt-1 text-sm text-zinc-300">
-                        <span>{b.knifeCount} {b.knifeCount === 1 ? "knife" : "knives"}</span>
+                        <span>
+                          {b.knifeCount} {b.knifeCount === 1 ? "knife" : "knives"}
+                        </span>
                         <span>{formatKr(b.amountOre)}</span>
                         <span className="text-zinc-400">{b.paymentMethod ?? "—"}</span>
                         {statusSelect(b)}
                       </div>
-                      <ConsentDetails booking={b} />
+                      <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-xs text-amber-400 font-medium">
+                        <span>Open booking & pickup photos</span>
+                        <span>→</span>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -381,12 +400,16 @@ export default function AdminPage() {
                         <th className="py-3.5 px-5">Knives</th>
                         <th className="py-3.5 px-5">Price</th>
                         <th className="py-3.5 px-5">Payment</th>
-                        <th className="py-3.5 px-5">Withdrawal consent</th>
+                        <th className="py-3.5 px-5 text-right">Details</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800 text-sm">
                       {bookings.map((b) => (
-                        <tr key={b.id} className="hover:bg-zinc-800/50 transition">
+                        <tr
+                          key={b.id}
+                          onClick={() => router.push(`/bookings/${b.id}`)}
+                          className="hover:bg-zinc-800/60 cursor-pointer transition"
+                        >
                           <td className="py-4 px-5 font-bold text-amber-400 whitespace-nowrap">
                             {b.pickupTime.slice(0, 5)}
                           </td>
@@ -396,13 +419,18 @@ export default function AdminPage() {
                               href={`https://maps.google.com/?q=${encodeURIComponent(b.pickupAddress)}`}
                               target="_blank"
                               rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
                               className="text-zinc-200 hover:text-amber-400 underline underline-offset-2"
                             >
                               {b.pickupAddress}
                             </a>
                           </td>
                           <td className="py-4 px-5 whitespace-nowrap">
-                            <a href={`tel:${b.customerPhone}`} className="text-amber-400 hover:underline">
+                            <a
+                              href={`tel:${b.customerPhone}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-amber-400 hover:underline"
+                            >
                               {b.customerPhone}
                             </a>
                           </td>
@@ -413,7 +441,9 @@ export default function AdminPage() {
                             <div className="text-zinc-400 text-xs">{b.paymentMethod ?? "—"}</div>
                             {statusSelect(b)}
                           </td>
-                          <td className="py-4 px-5"><ConsentDetails booking={b} /></td>
+                          <td className="py-4 px-5 text-right text-amber-400 font-medium whitespace-nowrap">
+                            Photos →
+                          </td>
                         </tr>
                       ))}
                     </tbody>
